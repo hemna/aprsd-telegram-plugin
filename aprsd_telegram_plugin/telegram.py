@@ -1,6 +1,7 @@
 import datetime
 import logging
 import threading
+import time
 
 from aprsd import messaging, objectstore, plugin, threads, trace
 from telegram.ext import Filters, MessageHandler, Updater
@@ -77,7 +78,7 @@ class TelegramChatPlugin(plugin.APRSDRegexCommandPluginBase):
         _help = [
             "telegram: Chat with a user on telegram Messenger.",
             "telegram: username has to message you first."
-            "tg: Send tg <shortcut/username> <message>",
+            "tg: Send tg <username> <message>",
         ]
         return _help
 
@@ -206,5 +207,7 @@ class TelegramThread(threads.APRSDThread):
             timeout=2,
             drop_pending_updates=True,
         )
+        # So we don't eat 100% CPU
+        time.sleep(1)
         # so we can continue looping
         return True
