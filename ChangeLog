@@ -1,9 +1,14 @@
 CHANGES
 =======
 
-* First version working
+v0.1.1
+------
+
+* Fixed a 100% CPU utilization issue
 
 v0.1.0
 ------
 
+* Updated Changelog
+* First version working
 * Initial commit
