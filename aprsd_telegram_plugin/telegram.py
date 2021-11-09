@@ -6,6 +6,8 @@ import time
 from aprsd import messaging, objectstore, plugin, threads, trace
 from telegram.ext import Filters, MessageHandler, Updater
 
+import aprsd_telegram_plugin
+
 
 LOG = logging.getLogger("APRSD")
 
@@ -65,7 +67,7 @@ class TelegramUsers(objectstore.ObjectStoreMixin):
 
 class TelegramChatPlugin(plugin.APRSDRegexCommandPluginBase):
 
-    version = "1.0"
+    version = aprsd_telegram_plugin.__version__
     # Look for any command that starts with w or W
     command_regex = "^[tT][gG]"
     # the command is for ?
