@@ -1,6 +1,12 @@
 CHANGES
 =======
 
+v0.1.2
+------
+
+* for v0.1.1
+* Use the pbr version of the package as plugin version
+
 v0.1.1
 ------
 
