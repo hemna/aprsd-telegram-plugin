@@ -3,7 +3,7 @@ import logging
 import threading
 import time
 
-from aprsd import messaging, objectstore, plugin, threads, trace
+from aprsd import messaging, objectstore, plugin, threads
 from telegram.ext import Filters, MessageHandler, Updater
 
 import aprsd_telegram_plugin
@@ -101,18 +101,29 @@ class TelegramChatPlugin(plugin.APRSDRegexCommandPluginBase):
 
         # self.bot = telegram.Bot(token=token)
         # LOG.info(self.bot.get_me())
-        self.updater = Updater(
-            token=token,
-            use_context=True,
-            persistence=False,
-        )
-        self.dispatcher = self.updater.dispatcher
-        self.dispatcher.add_handler(
-            MessageHandler(
-                Filters.text & (~Filters.command),
-                self.message_handler,
-            ),
-        )
+        LOG.info("Starting up Updater")
+        try:
+            self.updater = Updater(
+                token=token,
+                use_context=True,
+                persistence=False,
+            )
+        except Exception as ex:
+            self.enabled = False
+            LOG.exception(ex)
+        LOG.info("Starting up Dispatcher")
+
+        try:
+            self.dispatcher = self.updater.dispatcher
+            self.dispatcher.add_handler(
+                MessageHandler(
+                    Filters.text & (~Filters.command),
+                    self.message_handler,
+                ),
+            )
+        except Exception as ex:
+            self.enabled = False
+            LOG.exception(ex)
 
     def message_handler(self, update, context):
         """This is called when a telegram users texts the bot."""
@@ -145,9 +156,9 @@ class TelegramChatPlugin(plugin.APRSDRegexCommandPluginBase):
 
     def create_threads(self):
         if self.enabled:
+            LOG.info("Starting TelegramThread")
             return TelegramThread(self.config, self.updater)
 
-    @trace.trace
     def process(self, packet):
         """This is called when a received packet matches self.command_regex."""
         LOG.info("TelegramChatPlugin Plugin")
@@ -205,10 +216,14 @@ class TelegramThread(threads.APRSDThread):
 
     def loop(self):
         """We have to loop, so we can stop the thread upon CTRL-C"""
-        self.updater.start_polling(
-            timeout=2,
-            drop_pending_updates=True,
-        )
+        try:
+            self.updater.start_polling(
+                timeout=2,
+                drop_pending_updates=True,
+            )
+        except Exception as ex:
+            LOG.exception(ex)
+            return False
         # So we don't eat 100% CPU
         time.sleep(1)
         # so we can continue looping
