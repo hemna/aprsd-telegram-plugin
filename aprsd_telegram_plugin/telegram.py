@@ -3,7 +3,7 @@ import logging
 import threading
 import time
 
-from aprsd import messaging, objectstore, plugin, threads
+from aprsd import objectstore, packets, plugin, threads
 from telegram.ext import Filters, MessageHandler, Updater
 
 import aprsd_telegram_plugin
@@ -143,16 +143,24 @@ class TelegramChatPlugin(plugin.APRSDRegexCommandPluginBase):
             self.users[update.message.chat.username] = update.message.chat.id
             # LOG.debug(self.users)
             # LOG.info(f"{message}")
-            msg = messaging.TextMessage(fromcall, tocall, message)
-            msg.send()
+            pkt = packets.MessagePacket(
+                from_call=fromcall,
+                to_call=tocall,
+                message_text=message,
+            )
+            pkt.send()
         elif update.message.chat.type == "group":
             group_name = "noidea"
             message = "TelegramGroup({}): {}".format(
                 group_name,
                 update.message.text,
             )
-            msg = messaging.TextMessage(fromcall, tocall, message)
-            msg.send()
+            pkt = packets.MessagePacket(
+                from_call=fromcall,
+                to_call=tocall,
+                message_text=message,
+            )
+            pkt.send()
 
     def create_threads(self):
         if self.enabled:
@@ -163,8 +171,8 @@ class TelegramChatPlugin(plugin.APRSDRegexCommandPluginBase):
         """This is called when a received packet matches self.command_regex."""
         LOG.info("TelegramChatPlugin Plugin")
 
-        from_callsign = packet.get("from")
-        message = packet.get("message_text", None)
+        from_callsign = packet.from_call
+        message = packet.message_text
 
         if self.enabled:
             # Now we can process
@@ -196,10 +204,10 @@ class TelegramChatPlugin(plugin.APRSDRegexCommandPluginBase):
                 text=msg,
             )
 
-            return messaging.NULL_MESSAGE
+            return packets.NULL_MESSAGE
         else:
             LOG.warning("TelegramChatPlugin is disabled.")
-            return messaging.NULL_MESSAGE
+            return packets.NULL_MESSAGE
 
 
 class TelegramThread(threads.APRSDThread):
