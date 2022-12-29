@@ -3,12 +3,16 @@ import logging
 import threading
 import time
 
+from aprsd import conf  # noqa
 from aprsd import objectstore, packets, plugin, threads
+from oslo_config import cfg
 from telegram.ext import Filters, MessageHandler, Updater
 
 import aprsd_telegram_plugin
+from aprsd_telegram_plugin import conf  # noqa
 
 
+CONF = cfg.CONF
 LOG = logging.getLogger("APRSD")
 
 
@@ -23,17 +27,15 @@ class TelegramUsers(objectstore.ObjectStoreMixin):
     """
     _instance = None
     data = {}
-    config = None
     _shortcuts = {}
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance.lock = threading.Lock()
-            cls._instance.config = kwargs["config"]
             cls._instance.data = {}
-            if kwargs["config"].exists("services.telegram.shortcuts"):
-                cls._instance._shortcuts = kwargs["config"].get("services.telegram.shortcuts")
+            if CONF.aprsd_telegram_plugin.shortcuts:
+                cls._instance._shortcuts = CONF.aprsd_telegram_plugin.shortcuts
             else:
                 cls._instance._shortcuts = None
             cls._instance._init_store()
@@ -87,16 +89,14 @@ class TelegramChatPlugin(plugin.APRSDRegexCommandPluginBase):
     def setup(self):
         self.enabled = True
         # Do some checks here?
-        try:
-            self.config.check_option(["services", "telegram", "apiKey"])
-        except Exception as ex:
+        if not CONF.aprsd_telegram_plugin.apiKey:
             LOG.error(f"Failed to find config telegram:apiKey {ex}")
             self.enabled = False
             return
 
-        token = self.config.get("services.telegram.apiKey")
+        token = CONF.aprsd_telegram_plugin.apiKey
 
-        self.users = TelegramUsers(config=self.config)
+        self.users = TelegramUsers()
         self.users.load()
 
         # self.bot = telegram.Bot(token=token)
@@ -132,7 +132,7 @@ class TelegramChatPlugin(plugin.APRSDRegexCommandPluginBase):
         # LOG.info(f"Chat {update.message.chat}")
         # LOG.info(f"From {update.message.from.username} : ")
         fromcall = self.config.get("aprs.login")
-        tocall = self.config.get("ham.callsign")
+        tocall = CONF.callsign
 
         if update.message.chat.type == "private":
             LOG.info(f"Username {update.message.chat.username} - ID {update.message.chat.id}")
@@ -165,7 +165,7 @@ class TelegramChatPlugin(plugin.APRSDRegexCommandPluginBase):
     def create_threads(self):
         if self.enabled:
             LOG.info("Starting TelegramThread")
-            return TelegramThread(self.config, self.updater)
+            return TelegramThread(self.updater)
 
     def process(self, packet):
         """This is called when a received packet matches self.command_regex."""
@@ -211,16 +211,15 @@ class TelegramChatPlugin(plugin.APRSDRegexCommandPluginBase):
 
 
 class TelegramThread(threads.APRSDThread):
-    def __init__(self, config, updater):
+    def __init__(self, updater):
         super().__init__(self.__class__.__name__)
-        self.config = config
         self.past = datetime.datetime.now()
         self.updater = updater
 
     def stop(self):
         self.thread_stop = True
         self.updater.stop()
-        TelegramUsers(config=self.config).save()
+        TelegramUsers().save()
 
     def loop(self):
         """We have to loop, so we can stop the thread upon CTRL-C"""
