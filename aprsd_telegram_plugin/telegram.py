@@ -4,7 +4,8 @@ import threading
 import time
 
 from aprsd import conf  # noqa
-from aprsd import objectstore, packets, plugin, threads
+from aprsd import packets, plugin, threads
+from aprsd.utils import objectstore
 from oslo_config import cfg
 from telegram.ext import Filters, MessageHandler, Updater
 
