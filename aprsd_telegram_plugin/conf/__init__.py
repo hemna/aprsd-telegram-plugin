@@ -1,9 +1,6 @@
-import logging
-
-from aprsd_twitter_plugin.conf import twitter
+from aprsd_telegram_plugin.conf import telegram
 from oslo_config import cfg
 
 
 CONF = cfg.CONF
-
-twitter.register_opts(CONF)
+telegram.register_opts(CONF)

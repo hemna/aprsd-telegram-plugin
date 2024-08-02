@@ -12,18 +12,18 @@ telegram_opts = [
         help="Callsign allowed to use Telegram! "
              "For example, if you set this to WB4BOR then any"
              "callsign starting with WB4BOR will be allowed to use this."
-             "This way WB4BOR-1 can tweet from this instance.",
+             "This way WB4BOR-1 can use this instance.",
     ),
     cfg.StrOpt(
         "apiKey",
-        help="Your twitter apiKey"
+        help="Your telegram apiKey"
              "Information for creating your api keys is here:  "
-             "https://developer.twitter.com/en/docs/authentication/oauth-1-0a/api-key-and-secret",
+             "https://core.telegram.org/api/obtaining_api_id",
     ),
     cfg.ListOpt(
         "shortcuts",
         help="List of shortcuts for sending telegram messages "
-             "For Exmaple: wb=hemna6969,cl=craigerl\n"
+             "For Example: wb=hemna6969,cl=craigerl\n"
              "Means use 'wb' to send a telegram message to hemna6969",
     ),
 ]

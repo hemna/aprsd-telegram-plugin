@@ -32,20 +32,33 @@ You can install *aprsd-telegram-plugin* via pip_ from PyPI_:
    $ pip install aprsd-telegram-plugin
 
 
-Now edit your aprsd.yml config file and add the plugin
+Now edit your aprsd.conf config file and add the plugin
 
-.. code:: yaml
+.. code:: ini
 
-    aprsd:
-      enabled_plugins:
-        - aprsd_telegram_plugin.telegram.TelegramChatPlugin
 
-    services:
-      telegram:
-        apiKey: <Your Telegram bot APIkey>
-        shortcuts:
-          'wb': hemna6969
+    [DEFAULT]
+    enabled_plugins = aprsd_telegram_plugin.telegram.TelegramChatPlugin
 
+    [aprsd_telegram_plugin]
+
+    #
+    # From aprsd_telegram_plugin.conf
+    #
+
+    # Callsign allowed to use Telegram! For example, if you set this to
+    # WB4BOR then anycallsign starting with WB4BOR will be allowed to use
+    # this.This way WB4BOR-1 can use this instance. (string value)
+    #callsign = <None>
+
+    # Your telegram apiKeyInformation for creating your api keys is here:
+    # https://core.telegram.org/api/obtaining_api_id (string value)
+    #apiKey = <None>
+
+    # List of shortcuts for sending telegram messages For Example:
+    # wb=hemna6969,cl=craigerl
+    # Means use 'wb' to send a telegram message to hemna6969 (list value)
+    #shortcuts = <None>
 
 
 Usage
