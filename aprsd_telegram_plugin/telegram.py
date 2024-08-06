@@ -5,6 +5,7 @@ import time
 
 from aprsd import conf  # noqa
 from aprsd import packets, plugin, threads
+from aprsd.threads import tx
 from aprsd.utils import objectstore
 from oslo_config import cfg
 from telegram.ext import Filters, MessageHandler, Updater
@@ -132,8 +133,8 @@ class TelegramChatPlugin(plugin.APRSDRegexCommandPluginBase):
         # LOG.info(f"Text {update.message.text}")
         # LOG.info(f"Chat {update.message.chat}")
         # LOG.info(f"From {update.message.from.username} : ")
-        fromcall = self.config.get("aprs.login")
-        tocall = CONF.callsign
+        fromcall = CONF.aprs_network.login
+        tocall = CONF.aprsd_telegram_plugin.callsign
 
         if update.message.chat.type == "private":
             LOG.info(f"Username {update.message.chat.username} - ID {update.message.chat.id}")
@@ -149,7 +150,7 @@ class TelegramChatPlugin(plugin.APRSDRegexCommandPluginBase):
                 to_call=tocall,
                 message_text=message,
             )
-            pkt.send()
+            tx.send(pkt)
         elif update.message.chat.type == "group":
             group_name = "noidea"
             message = "TelegramGroup({}): {}".format(
@@ -161,7 +162,7 @@ class TelegramChatPlugin(plugin.APRSDRegexCommandPluginBase):
                 to_call=tocall,
                 message_text=message,
             )
-            pkt.send()
+            tx.send(pkt)
 
     def create_threads(self):
         if self.enabled:
@@ -178,7 +179,7 @@ class TelegramChatPlugin(plugin.APRSDRegexCommandPluginBase):
         if self.enabled:
             # Now we can process
             # Only allow aprsd owner to use this.
-            mycall = self.config["ham"]["callsign"]
+            mycall = CONF.aprsd_telegram_plugin.callsign
 
             # Only allow the owner of aprsd to send a tweet
             if not from_callsign.startswith(mycall):
