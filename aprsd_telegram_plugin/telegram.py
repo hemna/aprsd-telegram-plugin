@@ -92,7 +92,7 @@ class TelegramChatPlugin(plugin.APRSDRegexCommandPluginBase):
         self.enabled = True
         # Do some checks here?
         if not CONF.aprsd_telegram_plugin.apiKey:
-            LOG.error(f"Failed to find config telegram:apiKey {ex}")
+            LOG.error(f"Failed to find config telegram:apiKey")
             self.enabled = False
             return
 
