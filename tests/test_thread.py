@@ -38,10 +38,20 @@ class TestTelegramThread(unittest.TestCase):
         self.thread.send("walt", 42, "hello")
 
     def test_loop_returns_false_when_serve_exits(self):
+        self.plugin.running = True
         with mock.patch.object(
             impl.TelegramThread, "_serve", new=mock.AsyncMock(),
         ):
             self.assertFalse(self.thread.loop())
+        self.assertFalse(self.plugin.running)
+
+    def test_each_loop_gets_a_fresh_stop_event(self):
+        first = self.thread._async_stop
+        with mock.patch.object(
+            impl.TelegramThread, "_serve", new=mock.AsyncMock(),
+        ):
+            self.thread.loop()
+        self.assertIsNot(first, self.thread._async_stop)
 
     def test_startup_failure_marks_not_running_but_stays_enabled(self):
         self.thread.app = mock.Mock()
@@ -70,10 +80,9 @@ class TestTelegramThread(unittest.TestCase):
         future.exception.return_value = RuntimeError("blocked")
         future.cancelled.return_value = False
         with mock.patch.object(impl, "threading") as threading:
-            with mock.patch.object(impl.asyncio, "get_running_loop") as loop:
-                self.thread._send_done("walt", future)
+            self.thread._send_done("walt", future)
         threading.Thread.assert_called_once()
-        loop.assert_not_called()
+        self.assertIs(impl.tx.send, threading.Thread.call_args.kwargs["target"])
 
     def test_cancelled_send_reports_nothing(self):
         future = mock.Mock()

@@ -205,6 +205,11 @@ class TelegramThread(threads.APRSDThread):
         self._async_stop = asyncio.Event()
 
     def loop(self):
+        # A stop() that arrived before this loop set the flag; keep it. If
+        # loop() ever runs twice, give it a fresh event: an Event binds to
+        # the first loop that awaits it.
+        if not self._async_stop.is_set():
+            self._async_stop = asyncio.Event()
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
         try:
@@ -213,6 +218,7 @@ class TelegramThread(threads.APRSDThread):
             self._loop.close()
             asyncio.set_event_loop(None)
             self._loop = None
+            self.plugin.running = False
         return False
 
     async def _serve(self):

@@ -96,6 +96,11 @@ class TestTelegramChatPlugin(unittest.TestCase):
             self.plugin.process(self._packet()),
         )
 
+    def test_create_threads_marks_running(self):
+        with mock.patch.object(impl, "TelegramThread") as thread:
+            self.assertEqual([thread.return_value], self.plugin.create_threads())
+        self.assertTrue(self.plugin.running)
+
     def test_not_running_after_startup_failure(self):
         self.plugin.users.set_seen("walt", 42)
         self.plugin.running = False
