@@ -1,11 +1,13 @@
 import asyncio
+import functools
 import logging
 import threading
 
-from aprsd import packets, plugin, threads  # noqa: F401
-from aprsd.threads import tx  # noqa: F401
+from aprsd import packets, plugin, threads
+from aprsd.threads import tx
 from aprsd.utils import objectstore
 from oslo_config import cfg
+from telegram.ext import Application, MessageHandler, filters
 
 import aprsd_telegram_plugin
 from aprsd_telegram_plugin import conf  # noqa: F401
@@ -179,3 +181,79 @@ class TelegramChatPlugin(plugin.APRSDRegexCommandPluginBase):
             ),
         )
         await asyncio.get_running_loop().run_in_executor(None, tx.send, pkt)
+
+
+class TelegramThread(threads.APRSDThread):
+    """Owns the telegram polling loop and keeps it stoppable."""
+
+    def __init__(self, plugin, token):
+        super().__init__("TelegramThread")
+        self.plugin = plugin
+        self.app = Application.builder().token(token).build()
+        self.app.add_handler(
+            MessageHandler(
+                filters.TEXT & ~filters.COMMAND, plugin.message_handler,
+            ),
+        )
+        self._loop = None
+        self._async_stop = None
+
+    def loop(self):
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
+        try:
+            self._loop.run_until_complete(self._serve())
+        finally:
+            self._loop.close()
+            asyncio.set_event_loop(None)
+            self._loop = None
+        return False
+
+    async def _serve(self):
+        self._async_stop = asyncio.Event()
+        try:
+            await self.app.initialize()
+            await self.app.start()
+            await self.app.updater.start_polling()
+        except Exception:
+            LOG.exception("Telegram bot failed to start, disabling plugin")
+            self.plugin.enabled = False
+            return
+
+        LOG.info("Telegram bot is polling")
+        await self._async_stop.wait()
+        LOG.info("Telegram bot is stopping")
+        await self.app.updater.stop()
+        await self.app.stop()
+        await self.app.shutdown()
+
+    def stop(self):
+        super().stop()
+        if self._loop is not None and self._async_stop is not None:
+            self._loop.call_soon_threadsafe(self._async_stop.set)
+
+    def send(self, username, chat_id, text):
+        if self._loop is None or self._loop.is_closed():
+            LOG.warning(f"No telegram loop running, dropping message to {username}")
+            return
+        future = asyncio.run_coroutine_threadsafe(
+            self.app.bot.send_message(chat_id=chat_id, text=text),
+            self._loop,
+        )
+        future.add_done_callback(functools.partial(self._send_done, username))
+
+    def _send_done(self, username, future):
+        ex = future.exception()
+        if ex is None:
+            return
+        LOG.error(f"Telegram send to @{username} failed: {ex!r}")
+        sender = self.plugin.users.last_sender(username)
+        if sender is None:
+            return
+        tx.send(
+            packets.MessagePacket(
+                from_call=CONF.callsign,
+                to_call=sender,
+                message_text=f"Telegram send failed: {ex}",
+            ),
+        )
