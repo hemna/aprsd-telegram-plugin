@@ -24,6 +24,7 @@ class TestTelegramChatPlugin(unittest.TestCase):
             impl.TelegramChatPlugin, "create_threads", return_value=[],
         ):
             self.plugin = impl.TelegramChatPlugin()
+        self.plugin.running = True
         self.plugin.thread = mock.Mock()
 
     def tearDown(self):
@@ -97,7 +98,7 @@ class TestTelegramChatPlugin(unittest.TestCase):
 
     def test_not_running_after_startup_failure(self):
         self.plugin.users.set_seen("walt", 42)
-        self.plugin.enabled = False
+        self.plugin.running = False
         self.assertEqual(
             "Telegram plugin is not running",
             self.plugin.process(self._packet()),

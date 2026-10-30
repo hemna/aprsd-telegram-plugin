@@ -1,4 +1,5 @@
 import asyncio
+import threading
 import unittest
 from unittest import mock
 
@@ -14,11 +15,24 @@ class TestTelegramThread(unittest.TestCase):
     def setUp(self):
         impl.TelegramUsers._instance = None
         self.plugin = mock.Mock()
+        self.plugin.enabled = True
         self.thread = impl.TelegramThread(self.plugin, "123:fake")
 
     def test_stop_sets_base_shutdown_event(self):
         self.thread.stop()
         self.assertTrue(self.thread._should_quit())
+
+    def test_stop_before_start_skips_polling(self):
+        self.thread.app = mock.Mock()
+        self.thread.app.updater.start_polling = mock.AsyncMock()
+        self.thread.stop()
+        worker = threading.Thread(
+            target=lambda: asyncio.run(self.thread._serve()), daemon=True,
+        )
+        worker.start()
+        worker.join(10)
+        self.assertFalse(worker.is_alive())
+        self.thread.app.updater.start_polling.assert_not_called()
 
     def test_send_without_loop_does_not_raise(self):
         self.thread.send("walt", 42, "hello")
@@ -29,22 +43,41 @@ class TestTelegramThread(unittest.TestCase):
         ):
             self.assertFalse(self.thread.loop())
 
-    def test_startup_failure_disables_plugin(self):
+    def test_startup_failure_marks_not_running_but_stays_enabled(self):
         self.thread.app = mock.Mock()
         self.thread.app.initialize = mock.AsyncMock(
             side_effect=RuntimeError("bad token"),
         )
         asyncio.run(self.thread._serve())
-        self.assertFalse(self.plugin.enabled)
+        self.assertFalse(self.plugin.running)
+        self.assertTrue(self.plugin.enabled)
 
-    def test_send_failure_reports_back_to_aprs(self):
+    def test_send_failure_builds_aprs_packet(self):
+        self.plugin.users.last_sender.return_value = "WB4BOR-7"
+        pkt = self.thread._failure_packet("walt", RuntimeError("blocked"))
+        self.assertEqual("WB4BOR-7", pkt.to_call)
+        self.assertEqual("Telegram send failed: blocked", pkt.message_text)
+
+    def test_send_failure_without_sender_builds_nothing(self):
+        self.plugin.users.last_sender.return_value = None
+        self.assertIsNone(
+            self.thread._failure_packet("walt", RuntimeError("blocked")),
+        )
+
+    def test_send_failure_never_touches_the_aprs_tx_lock_inline(self):
         self.plugin.users.last_sender.return_value = "WB4BOR-7"
         future = mock.Mock()
-        future.exception.return_value = RuntimeError("bot was blocked")
-        with mock.patch.object(impl.tx, "send") as send:
+        future.exception.return_value = RuntimeError("blocked")
+        future.cancelled.return_value = False
+        with mock.patch.object(impl, "threading") as threading:
+            with mock.patch.object(impl.asyncio, "get_running_loop") as loop:
+                self.thread._send_done("walt", future)
+        threading.Thread.assert_called_once()
+        loop.assert_not_called()
+
+    def test_cancelled_send_reports_nothing(self):
+        future = mock.Mock()
+        future.cancelled.return_value = True
+        with mock.patch.object(impl, "threading") as threading:
             self.thread._send_done("walt", future)
-        send.assert_called_once()
-        self.assertEqual(
-            "Telegram send failed: bot was blocked",
-            send.call_args.args[0].message_text,
-        )
+        threading.Thread.assert_not_called()

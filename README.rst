@@ -25,8 +25,11 @@ Requirements
 * Python 3.10+ and aprsd 5.0 or newer.
 * You have to create a telegram bot with @BotFather and get its token.
 * Every Telegram user you want to talk to must find that bot, press
-  ``/start`` and send it one message. That first message is how the plugin
-  learns their chat id, because Telegram has no username to id lookup.
+  ``/start`` and send it one normal text message. That first message is how
+  the plugin learns their chat id, because Telegram has no username to id
+  lookup. Commands (anything starting with ``/``) are ignored.
+* If a user changes their Telegram username, update the alias and have them
+  message the bot again.
 * Only a private chat with the bot is used; group chats are ignored.
 
 Installation
