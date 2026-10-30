@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import threading
 
@@ -33,6 +34,13 @@ def is_allowed(from_call, allowed, fallback):
     allowed = [c.strip().upper() for c in (allowed or [])] or [fallback.upper()]
     call = (from_call or "").upper()
     return any(call == entry or call.startswith(entry + "-") for entry in allowed)
+
+
+def normalise(text, prefix):
+    """Flatten text to one ASCII APRS line inside the 67 char budget."""
+    text = " ".join(text.split())
+    text = text.encode("ascii", "ignore").decode()
+    return prefix + text[: 67 - len(prefix)]
 
 
 class TelegramUsers(objectstore.ObjectStoreMixin):
@@ -139,3 +147,35 @@ class TelegramChatPlugin(plugin.APRSDRegexCommandPluginBase):
             username, chat_id, f"{packet.from_call}: {' '.join(parts[2:])}",
         )
         return packets.NULL_MESSAGE
+
+    async def message_handler(self, update, context):
+        """Called when a telegram user messages the bot."""
+        chat = update.message.chat
+        if chat.type != "private":
+            LOG.info(f"Ignoring telegram {chat.type} chat {chat.id}")
+            return
+
+        username = (chat.username or "").casefold()
+        if username not in self.aliases.values():
+            LOG.info(
+                f"Ignoring telegram message from unknown user @{chat.username}",
+            )
+            return
+
+        if self.users.chat_id(username) is None:
+            self.users.set_seen(username, chat.id)
+            LOG.info(f"Learned telegram @{username} chat_id={chat.id}")
+
+        sender = self.users.last_sender(username)
+        if sender is None:
+            LOG.info(f"No APRS sender for @{username} yet, dropping reply")
+            return
+
+        pkt = packets.MessagePacket(
+            from_call=CONF.callsign,
+            to_call=sender,
+            message_text=normalise(
+                update.message.text, f"Telegram({username}): ",
+            ),
+        )
+        await asyncio.get_running_loop().run_in_executor(None, tx.send, pkt)
