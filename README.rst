@@ -13,14 +13,21 @@ Features
 
 * Have a 2 way chat with users of Telegram messenger `http://telegram.org`
 
+How it works
+------------
+
+* You message a Telegram user from APRS with ``tg <alias> <text>``.
+* Their reply comes back to the APRS callsign that last messaged them.
+
 Requirements
 ------------
 
-* You have to create a telegram bot and start the bot
-* Telegram users have to add that bot and then /start
-* Telegram user can then message the bot
-* Only after a telegram user has successfully completed the above
-  can you then message a telegram user from an APRS enabled HAM Radio.
+* Python 3.10+ and aprsd 5.0 or newer.
+* You have to create a telegram bot with @BotFather and get its token.
+* Every Telegram user you want to talk to must find that bot, press
+  ``/start`` and send it one message. That first message is how the plugin
+  learns their chat id, because Telegram has no username to id lookup.
+* Only a private chat with the bot is used; group chats are ignored.
 
 Installation
 ------------
@@ -31,40 +38,59 @@ You can install *aprsd-telegram-plugin* via pip_ from PyPI_:
 
    $ pip install aprsd-telegram-plugin
 
-
-Now edit your aprsd.conf config file and add the plugin
+Then enable the plugin in your ``aprsd.conf``:
 
 .. code:: ini
 
-
     [DEFAULT]
     enabled_plugins = aprsd_telegram_plugin.telegram.TelegramChatPlugin
+    callsign = WB4BOR
 
     [aprsd_telegram_plugin]
 
-    #
-    # From aprsd_telegram_plugin.conf
-    #
+    # Turn the plugin on. Without this nothing runs and `tg` is not answered.
+    enabled = true
 
-    # Callsign allowed to use Telegram! For example, if you set this to
-    # WB4BOR then anycallsign starting with WB4BOR will be allowed to use
-    # this.This way WB4BOR-1 can use this instance. (string value)
-    #callsign = <None>
+    # Bot token from @BotFather, not the api_id/api_hash.
+    apiKey = 123456:ABC-DEF...
 
-    # Your telegram apiKeyInformation for creating your api keys is here:
-    # https://core.telegram.org/api/obtaining_api_id (string value)
-    #apiKey = <None>
+    # alias=@telegram_username pairs. The alias is what you type after `tg`.
+    aliases = wb=@walt, cl=@craigerl
 
-    # List of shortcuts for sending telegram messages For Example:
-    # wb=hemna6969,cl=craigerl
-    # Means use 'wb' to send a telegram message to hemna6969 (list value)
-    #shortcuts = <None>
-
+    # APRS callsigns allowed to send `tg`. Any SSID of a listed callsign
+    # works (WB4BOR-7 matches WB4BOR). Empty means only the [DEFAULT]
+    # callsign may use the plugin.
+    allowed_callsigns = WB4BOR, N0CALL
 
 Usage
 -----
 
-Please see the `Command-line Reference <Usage_>`_ for details.
+Address the message to your APRSD callsign exactly (``WB4BOR``, not
+``WB4BOR-7`` and not a tactical alias), then:
+
+.. code:: text
+
+    tg wb see you at the repeater at 8
+
+The Telegram user ``@walt`` receives ``WB4BOR-7: see you at the repeater at 8``.
+When they reply in Telegram, the plugin sends it back to ``WB4BOR-7``, the
+callsign that last sent them a message:
+
+.. code:: text
+
+    Telegram(walt): sounds good
+
+Every reply is flattened to one line, stripped to ASCII and clipped to the
+67 character APRS message limit. Anything longer is cut, not split.
+
+Development
+-----------
+
+.. code:: console
+
+   $ uv venv .venv --python 3.12
+   $ uv pip install --python .venv/bin/python -e . -r requirements-dev.txt
+   $ .venv/bin/pytest -q
 
 
 Contributing
