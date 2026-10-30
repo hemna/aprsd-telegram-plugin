@@ -7,30 +7,33 @@ telegram_group = cfg.OptGroup(
 )
 
 telegram_opts = [
-    cfg.StrOpt(
-        "callsign",
-        help="Callsign allowed to use Telegram! "
-             "For example, if you set this to WB4BOR then any"
-             "callsign starting with WB4BOR will be allowed to use this."
-             "This way WB4BOR-1 can use this instance.",
+    cfg.BoolOpt(
+        "enabled",
+        default=False,
+        help="Enable the Telegram plugin?",
     ),
     cfg.StrOpt(
         "apiKey",
-        help="Your telegram apiKey"
-             "Information for creating your api keys is here:  "
-             "https://core.telegram.org/api/obtaining_api_id",
+        secret=True,
+        help="Telegram bot token from @BotFather.",
     ),
     cfg.ListOpt(
-        "shortcuts",
-        help="List of shortcuts for sending telegram messages "
-             "For Example: wb=hemna6969,cl=craigerl\n"
-             "Means use 'wb' to send a telegram message to hemna6969",
+        "aliases",
+        default=[],
+        help="alias=@telegram_username pairs, comma separated. "
+        "For example: wb=@walt, cl=@craigerl. The alias is what you type "
+        "after 'tg' on APRS.",
+    ),
+    cfg.ListOpt(
+        "allowed_callsigns",
+        default=[],
+        help="APRS callsigns allowed to use the plugin. Any SSID of a "
+        "listed callsign is accepted. Empty means only the [DEFAULT] "
+        "callsign may use it.",
     ),
 ]
 
-ALL_OPTS = (
-    telegram_opts
-)
+ALL_OPTS = (telegram_opts)
 
 
 def register_opts(cfg):

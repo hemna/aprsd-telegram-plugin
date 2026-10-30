@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.idea/
+.envrc
+Makefile.venv
+telegram.conf
+aprsd-telegram.yml
+aprsd-telegram-video.yml
+sample.conf
+*.p
+.superpowers/

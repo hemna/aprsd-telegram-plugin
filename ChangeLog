@@ -1,6 +1,17 @@
 CHANGES
 =======
 
+v0.2.0
+------
+
+* Rewrite for aprsd 5.0.0+ and python-telegram-bot 22
+* Replace ``shortcuts``/``callsign`` with ``aliases``, ``allowed_callsigns``
+  and ``enabled``; the bot token now lives in ``apiKey`` only
+* Learn each Telegram user's chat id from their first message to the bot
+* Replies return to the APRS callsign that last messaged that user
+* Shut the polling thread down cleanly; a bad token disables the plugin
+  instead of retrying forever
+
 v0.1.3
 ------
 
