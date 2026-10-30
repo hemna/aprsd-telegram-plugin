@@ -32,10 +32,12 @@ Requirements
   message the bot again.
 * Only a private chat with the bot is used; group chats are ignored.
 
-``allowed_callsigns`` is a convenience filter, not authentication: APRS lets a
-sender put any callsign in ``from_call``, so anyone who can inject packets can
-pretend to be an allowed callsign. It stops accidents and casual abuse, nothing
-more. Point the APRSD instance at a receive path you trust if that matters.
+``allowed_callsigns`` matches the packet's ``from_call`` and is not a security
+boundary. APRISD does log in to APRS-IS with your callsign and passcode, but
+the APRS-IS passcode is derived from the callsign with a published algorithm
+(``aprsd passcode <call>`` prints it), so it is not a secret. Treat the
+allowlist as protection against accidents and casual abuse, not against someone
+determined to impersonate an allowed callsign.
 
 Installation
 ------------
