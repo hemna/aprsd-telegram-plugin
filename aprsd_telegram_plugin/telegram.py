@@ -39,9 +39,9 @@ def is_allowed(from_call, allowed, fallback):
 
 
 def normalise(text, prefix):
-    """Flatten text to one ASCII APRS line inside the 67 char budget."""
+    """Flatten text to one printable ASCII APRS line in the 67 char budget."""
     text = " ".join(text.split())
-    text = text.encode("ascii", "ignore").decode()
+    text = "".join(c for c in text if " " <= c <= "~").strip()
     return prefix + text[: max(0, 67 - len(prefix))]
 
 
@@ -67,15 +67,23 @@ class TelegramUsers(objectstore.ObjectStoreMixin):
     def _record(self, username):
         return self.data.setdefault(username.casefold(), {})
 
+    def _save(self):
+        try:
+            self.save()
+        except Exception:
+            # A full or read-only disk must not break the bridge; the data
+            # stays in memory and the next successful save writes it all out.
+            LOG.exception("Failed to save telegram users")
+
     def set_seen(self, username, chat_id):
         with self.lock:
             self._record(username)["chat_id"] = chat_id
-        self.save()
+        self._save()
 
     def set_last_sender(self, username, callsign):
         with self.lock:
             self._record(username)["last_sender"] = callsign
-        self.save()
+        self._save()
 
     def chat_id(self, username):
         with self.lock:
@@ -122,7 +130,6 @@ class TelegramChatPlugin(plugin.APRSDRegexCommandPluginBase):
         self.thread = TelegramThread(
             self, CONF.aprsd_telegram_plugin.apiKey,
         )
-        self.running = True
         return [self.thread]
 
     def process(self, packet):
@@ -150,13 +157,20 @@ class TelegramChatPlugin(plugin.APRSDRegexCommandPluginBase):
 
         self.users.set_last_sender(username, packet.from_call)
         self.thread.send(
-            username, chat_id, f"{packet.from_call}: {' '.join(parts[2:])}",
+            username,
+            chat_id,
+            f"{packet.from_call}: {' '.join(parts[2:])}",
+            packet.from_call,
         )
         return packets.NULL_MESSAGE
 
     async def message_handler(self, update, context):
         """Called when a telegram user messages the bot."""
-        chat = update.message.chat
+        message = update.effective_message
+        if message is None:
+            # edited_message/channel_post updates carry no update.message.
+            return
+        chat = message.chat
         if chat.type != "private":
             LOG.info(f"Ignoring telegram {chat.type} chat {chat.id}")
             return
@@ -168,7 +182,16 @@ class TelegramChatPlugin(plugin.APRSDRegexCommandPluginBase):
             )
             return
 
-        if self.users.chat_id(username) is None:
+        stored = self.users.chat_id(username)
+        if stored != chat.id:
+            if stored is not None:
+                # The username moved to another account: forget the old
+                # account's APRS route so it can never receive replies.
+                LOG.warning(
+                    f"Telegram @{username} changed chat id "
+                    f"{stored} -> {chat.id}, old route dropped",
+                )
+                self.users.set_last_sender(username, None)
             self.users.set_seen(username, chat.id)
             LOG.info(f"Learned telegram @{username} chat_id={chat.id}")
 
@@ -181,7 +204,7 @@ class TelegramChatPlugin(plugin.APRSDRegexCommandPluginBase):
             from_call=CONF.callsign,
             to_call=sender,
             message_text=normalise(
-                update.message.text, f"Telegram({username}): ",
+                message.text, f"Telegram({username}): ",
             ),
         )
         await asyncio.get_running_loop().run_in_executor(None, tx.send, pkt)
@@ -203,13 +226,16 @@ class TelegramThread(threads.APRSDThread):
         # Created here, not in _serve(), so stop() can never miss the window
         # where the thread exists but the coroutine has not run yet.
         self._async_stop = asyncio.Event()
+        self._stop_lock = threading.Lock()
 
     def loop(self):
         # A stop() that arrived before this loop set the flag; keep it. If
         # loop() ever runs twice, give it a fresh event: an Event binds to
-        # the first loop that awaits it.
-        if not self._async_stop.is_set():
-            self._async_stop = asyncio.Event()
+        # the first loop that awaits it. The lock keeps that swap atomic
+        # against stop(), so a stop signal can never land on the old event.
+        with self._stop_lock:
+            if not self._async_stop.is_set():
+                self._async_stop = asyncio.Event()
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
         try:
@@ -224,15 +250,23 @@ class TelegramThread(threads.APRSDThread):
     async def _serve(self):
         if self._async_stop.is_set():
             return
+        initialized = started = False
         try:
             await self.app.initialize()
+            initialized = True
             await self.app.start()
+            started = True
             await self.app.updater.start_polling()
         except Exception:
             LOG.exception("Telegram bot failed to start, disabling plugin")
+            await self._shutdown_failed_start(started, initialized)
             self.plugin.running = False
             return
 
+        # Only now can send() actually deliver. `enabled` stays True on
+        # purpose: aprsd's filter() would otherwise answer every unrelated
+        # APRS message with "<plugin> isn't enabled".
+        self.plugin.running = True
         LOG.info("Telegram bot is polling")
         await self._async_stop.wait()
         LOG.info("Telegram bot is stopping")
@@ -240,29 +274,47 @@ class TelegramThread(threads.APRSDThread):
         await self.app.stop()
         await self.app.shutdown()
 
+    async def _shutdown_failed_start(self, started, initialized):
+        for done, step in ((started, self.app.stop), (initialized, self.app.shutdown)):
+            if not done:
+                continue
+            try:
+                await step()
+            except Exception:
+                LOG.exception("Telegram cleanup after startup failure failed")
+
     def stop(self):
         super().stop()
-        if self._loop is None or self._loop.is_closed():
-            self._async_stop.set()
+        with self._stop_lock:
+            stop_event = self._async_stop
+            loop = self._loop
+        if loop is None or loop.is_closed():
+            stop_event.set()
             return
         try:
-            self._loop.call_soon_threadsafe(self._async_stop.set)
+            loop.call_soon_threadsafe(stop_event.set)
         except RuntimeError:
             # Loop closed between the check and the call; nothing is polling.
-            self._async_stop.set()
+            stop_event.set()
 
-    def send(self, username, chat_id, text):
+    def send(self, username, chat_id, text, sender):
         if self._loop is None or self._loop.is_closed():
             LOG.warning(f"No telegram loop running, dropping message to {username}")
             return
-        future = asyncio.run_coroutine_threadsafe(
-            self.app.bot.send_message(chat_id=chat_id, text=text),
-            self._loop,
+        try:
+            future = asyncio.run_coroutine_threadsafe(
+                self.app.bot.send_message(chat_id=chat_id, text=text),
+                self._loop,
+            )
+        except RuntimeError:
+            # The loop closed between the check above and the schedule.
+            LOG.warning(f"Telegram loop closed, dropping message to {username}")
+            return
+        future.add_done_callback(
+            functools.partial(self._send_done, username, sender),
         )
-        future.add_done_callback(functools.partial(self._send_done, username))
 
-    def _failure_packet(self, username, ex):
-        sender = self.plugin.users.last_sender(username)
+    def _failure_packet(self, sender, ex):
         if sender is None:
             return None
         return packets.MessagePacket(
@@ -271,14 +323,14 @@ class TelegramThread(threads.APRSDThread):
             message_text=f"Telegram send failed: {ex}",
         )
 
-    def _send_done(self, username, future):
+    def _send_done(self, username, sender, future):
         if future.cancelled():
             return
         ex = future.exception()
         if ex is None:
             return
         LOG.error(f"Telegram send to @{username} failed: {ex!r}")
-        pkt = self._failure_packet(username, ex)
+        pkt = self._failure_packet(sender, ex)
         if pkt is None:
             return
         # tx.send blocks and retries, so keep it off the telegram loop; the

@@ -84,7 +84,7 @@ class TestTelegramChatPlugin(unittest.TestCase):
         result = self.plugin.process(self._packet())
         self.assertEqual(packets.NULL_MESSAGE, result)
         self.plugin.thread.send.assert_called_once_with(
-            "walt", 42, "WB4BOR-7: hi there",
+            "walt", 42, "WB4BOR-7: hi there", "WB4BOR-7",
         )
         self.assertEqual("WB4BOR-7", self.plugin.users.last_sender("walt"))
 
@@ -96,10 +96,11 @@ class TestTelegramChatPlugin(unittest.TestCase):
             self.plugin.process(self._packet()),
         )
 
-    def test_create_threads_marks_running(self):
+    def test_create_threads_does_not_claim_running(self):
+        self.plugin.running = False
         with mock.patch.object(impl, "TelegramThread") as thread:
             self.assertEqual([thread.return_value], self.plugin.create_threads())
-        self.assertTrue(self.plugin.running)
+        self.assertFalse(self.plugin.running)
 
     def test_not_running_after_startup_failure(self):
         self.plugin.users.set_seen("walt", 42)

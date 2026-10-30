@@ -32,6 +32,11 @@ Requirements
   message the bot again.
 * Only a private chat with the bot is used; group chats are ignored.
 
+``allowed_callsigns`` is a convenience filter, not authentication: APRS lets a
+sender put any callsign in ``from_call``, so anyone who can inject packets can
+pretend to be an allowed callsign. It stops accidents and casual abuse, nothing
+more. Point the APRSD instance at a receive path you trust if that matters.
+
 Installation
 ------------
 
@@ -89,10 +94,16 @@ Every reply is flattened to one line, stripped to ASCII and clipped to the
 Development
 -----------
 
+The plugin runs inside APRSD, so install the APRSD checkout you are testing
+against first, then the plugin without resolving its dependencies again
+(APRSD's own source tree pins `aprslib` to a git URL, which uv cannot resolve
+as a transitive dependency):
+
 .. code:: console
 
    $ uv venv .venv --python 3.12
-   $ uv pip install --python .venv/bin/python -e . -r requirements-dev.txt
+   $ uv pip install --python .venv/bin/python -e /path/to/aprsd
+   $ uv pip install --python .venv/bin/python --no-deps -e . -r requirements-dev.txt
    $ .venv/bin/pytest -q
 
 

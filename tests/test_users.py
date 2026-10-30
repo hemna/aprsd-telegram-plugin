@@ -15,9 +15,10 @@ CONF = cfg.CONF
 
 class TestTelegramUsers(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.mkdtemp()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
         CONF.set_override("enable_save", True)
-        CONF.set_override("save_location", self.tmp)
+        CONF.set_override("save_location", self.tmp.name)
         impl.TelegramUsers._instance = None
         self.users = impl.TelegramUsers()
 
@@ -33,7 +34,7 @@ class TestTelegramUsers(unittest.TestCase):
     def test_set_seen_writes_json_immediately(self):
         self.users.set_seen("walt", 42)
         raw = json.loads(
-            pathlib.Path(f"{self.tmp}/telegramusers.json").read_text(),
+            pathlib.Path(f"{self.tmp.name}/telegramusers.json").read_text(),
         )
         self.assertEqual({"walt": {"chat_id": 42}}, raw)
 
@@ -44,7 +45,7 @@ class TestTelegramUsers(unittest.TestCase):
     def test_set_last_sender_is_persisted(self):
         self.users.set_last_sender("walt", "WB4BOR-7")
         raw = json.loads(
-            pathlib.Path(f"{self.tmp}/telegramusers.json").read_text(),
+            pathlib.Path(f"{self.tmp.name}/telegramusers.json").read_text(),
         )
         self.assertEqual("WB4BOR-7", raw["walt"]["last_sender"])
 
@@ -57,14 +58,14 @@ class TestTelegramUsers(unittest.TestCase):
     def test_load_existing_file_does_not_deadlock(self):
         # objectstore.load() takes self.lock and then len(self), which takes
         # it again. A plain Lock hangs every APRSD start after the first.
-        pathlib.Path(f"{self.tmp}/telegramusers.json").write_text(
+        pathlib.Path(f"{self.tmp.name}/telegramusers.json").write_text(
             '{"walt": {"chat_id": 42}}',
         )
         script = (
             "from aprsd import conf;"  # noqa: F401 - registers the core opts
             "from oslo_config import cfg;"
             "cfg.CONF.set_override('enable_save', True);"
-            f"cfg.CONF.set_override('save_location', {self.tmp!r});"
+            f"cfg.CONF.set_override('save_location', {self.tmp.name!r});"
             "from aprsd_telegram_plugin.telegram import TelegramUsers;"
             "users = TelegramUsers();"
             "users.load();"

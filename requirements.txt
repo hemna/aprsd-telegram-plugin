@@ -1,3 +1,4 @@
 pbr
+aprsd>=5.0.0
 oslo.config
 python-telegram-bot>=22,<23

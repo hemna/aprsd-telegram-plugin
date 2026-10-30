@@ -13,13 +13,14 @@ GROUP = "aprsd_telegram_plugin"
 
 
 def _update(text, username="walt", chat_id=42, chat_type="private"):
-    return types.SimpleNamespace(
-        message=types.SimpleNamespace(
-            text=text,
-            chat=types.SimpleNamespace(
-                type=chat_type, username=username, id=chat_id,
-            ),
+    message = types.SimpleNamespace(
+        text=text,
+        chat=types.SimpleNamespace(
+            type=chat_type, username=username, id=chat_id,
         ),
+    )
+    return types.SimpleNamespace(
+        message=message, effective_message=message,
     )
 
 
@@ -31,13 +32,19 @@ class TestNormalise(unittest.TestCase):
 
     def test_drops_non_ascii(self):
         self.assertEqual(
-            "Telegram(walt): hi ",
+            "Telegram(walt): hi",
             impl.normalise("hi \u263a", "Telegram(walt): "),
         )
 
     def test_truncates_to_aprs_budget(self):
         out = impl.normalise("x" * 200, "Telegram(walt): ")
         self.assertEqual(67, len(out))
+
+    def test_strips_control_characters(self):
+        self.assertEqual(
+            "Telegram(walt): a[31mb",
+            impl.normalise("a\x1b[31mb\x00", "Telegram(walt): "),
+        )
 
 
 class TestMessageHandler(unittest.TestCase):
@@ -90,3 +97,18 @@ class TestMessageHandler(unittest.TestCase):
         self.assertEqual("WB4BOR-7", pkt.to_call)
         self.assertEqual("Telegram(walt): hi back", pkt.message_text)
         self.assertEqual(42, self.plugin.users.chat_id("walt"))
+
+    def test_update_without_a_message_is_ignored(self):
+        update = types.SimpleNamespace(message=None, effective_message=None)
+        with mock.patch.object(impl.tx, "send") as send:
+            self._run(update)
+        send.assert_not_called()
+
+    def test_changed_chat_id_rebinds_and_drops_the_old_route(self):
+        self.plugin.users.set_seen("walt", 41)
+        self.plugin.users.set_last_sender("walt", "WB4BOR-7")
+        with mock.patch.object(impl.tx, "send") as send:
+            self._run(_update("different account", chat_id=42))
+        self.assertEqual(42, self.plugin.users.chat_id("walt"))
+        self.assertIsNone(self.plugin.users.last_sender("walt"))
+        send.assert_not_called()
